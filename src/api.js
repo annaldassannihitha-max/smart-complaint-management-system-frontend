@@ -1,280 +1,112 @@
-
 const BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:8080'
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
+async function jsonRequest(path, options = {}) {
+  const response = await fetch(`${BASE}${path}`, options);
 
-// ============================================================
-// CLEAN COMPLAINT ID
-// ============================================================
-
-function cleanComplaintId(id) {
-  return String(id || '')
-    .trim()
-    .replace(/[.,;:!?]+$/g, '')
-    .trim()
-}
-
-
-// ============================================================
-// GENERIC JSON REQUEST
-// ============================================================
-
-async function jsonRequest(
-  path,
-  options = {}
-) {
-
-  const response = await fetch(
-    `${BASE}${path}`,
-    options
-  )
-
-
-  // Try to read JSON response
-  const data =
-    await response
-      .json()
-      .catch(() => ({}))
-
+  const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-
-    let message =
-      data?.message ||
-      data?.error ||
-      data?.detail
-
-
-    // Better messages for common errors
-
-    if (!message) {
-
-      if (response.status === 404) {
-
-        message =
-          'Complaint not found. Please check the complaint ID.'
-
-      } else if (
-        response.status === 400
-      ) {
-
-        message =
-          'Invalid request. Please check the entered information.'
-
-      } else if (
-        response.status === 401
-      ) {
-
-        message =
-          'Unauthorized request.'
-
-      } else if (
-        response.status === 403
-      ) {
-
-        message =
-          'Access denied.'
-
-      } else if (
-        response.status >= 500
-      ) {
-
-        message =
-          'Server error. Please try again.'
-
-      } else {
-
-        message =
-          `Request failed: ${response.status}`
-      }
-    }
-
-
-    throw new Error(message)
+    throw new Error(
+      data.message || `Request failed: ${response.status}`
+    );
   }
 
-
-  return data
+  return data;
 }
 
-
-// ============================================================
-// API
-// ============================================================
-
 export const api = {
-
-  // ----------------------------------------------------------
-  // BASE URL
-  // ----------------------------------------------------------
-
   base: BASE,
 
-
-  // ----------------------------------------------------------
+  // =====================================================
   // USER LOGIN
-  // ----------------------------------------------------------
+  // =====================================================
 
   userLogin: (pin) =>
-    jsonRequest(
-      '/api/auth/user',
-      {
-        method: 'POST',
+    jsonRequest('/api/auth/user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        pin,
+      }),
+    }),
 
-        headers: {
-          'Content-Type':
-            'application/json'
-        },
-
-        body: JSON.stringify({
-          pin: String(pin).trim()
-        })
-      }
-    ),
-
-
-  // ----------------------------------------------------------
+  // =====================================================
   // ADMIN LOGIN
-  // ----------------------------------------------------------
+  // =====================================================
 
   adminLogin: (password) =>
-    jsonRequest(
-      '/api/auth/admin',
-      {
-        method: 'POST',
+    jsonRequest('/api/auth/admin', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        password,
+      }),
+    }),
 
-        headers: {
-          'Content-Type':
-            'application/json'
-        },
-
-        body: JSON.stringify({
-          password:
-            String(password).trim()
-        })
-      }
-    ),
-
-
-  // ----------------------------------------------------------
+  // =====================================================
   // CREATE COMPLAINT
-  // ----------------------------------------------------------
+  // =====================================================
 
   createComplaint: (form) =>
-    jsonRequest(
-      '/api/complaints',
-      {
-        method: 'POST',
+    jsonRequest('/api/complaints', {
+      method: 'POST',
+      body: form,
+    }),
 
-        /*
-         * DO NOT manually set Content-Type here.
-         *
-         * Browser automatically creates:
-         * multipart/form-data
-         * with the correct boundary.
-         */
-        body: form
-      }
-    ),
-
-
-  // ----------------------------------------------------------
-  // GET ALL COMPLAINTS
-  // ----------------------------------------------------------
+  // =====================================================
+  // ALL COMPLAINTS - ADMIN
+  // =====================================================
 
   allComplaints: () =>
+    jsonRequest('/api/complaints'),
+
+  // =====================================================
+  // USER'S COMPLAINTS
+  // =====================================================
+
+  myComplaints: (userId) =>
     jsonRequest(
-      '/api/complaints'
+      `/api/complaints/user/${encodeURIComponent(userId)}`
     ),
 
+  // =====================================================
+  // SINGLE COMPLAINT
+  // =====================================================
 
-  // ----------------------------------------------------------
-  // GET ONE COMPLAINT
-  // ----------------------------------------------------------
+  getComplaint: (complaintId) =>
+    jsonRequest(
+      `/api/complaints/${encodeURIComponent(complaintId)}`
+    ),
 
-  getComplaint: (id) => {
-
-    const cleanId =
-      cleanComplaintId(id)
-
-
-    if (!cleanId) {
-
-      return Promise.reject(
-        new Error(
-          'Please enter a complaint ID.'
-        )
-      )
-    }
-
-
-    return jsonRequest(
-      `/api/complaints/${encodeURIComponent(
-        cleanId
-      )}`
-    )
-  },
-
-
-  // ----------------------------------------------------------
+  // =====================================================
   // UPDATE COMPLAINT
-  // ----------------------------------------------------------
+  // =====================================================
 
-  updateComplaint: (
-    id,
-    body
-  ) => {
-
-    const cleanId =
-      cleanComplaintId(id)
-
-
-    if (!cleanId) {
-
-      return Promise.reject(
-        new Error(
-          'Invalid complaint ID.'
-        )
-      )
-    }
-
-
-    return jsonRequest(
-      `/api/complaints/${encodeURIComponent(
-        cleanId
-      )}`,
+  updateComplaint: (complaintId, body) =>
+    jsonRequest(
+      `/api/complaints/${encodeURIComponent(complaintId)}`,
       {
         method: 'PATCH',
 
         headers: {
-          'Content-Type':
-            'application/json'
+          'Content-Type': 'application/json',
         },
 
-        body: JSON.stringify(
-          body
-        )
+        body: JSON.stringify(body),
       }
-    )
-  },
+    ),
 
-
-  // ----------------------------------------------------------
+  // =====================================================
   // PROOF IMAGE URL
-  // ----------------------------------------------------------
+  // =====================================================
 
-  proofUrl: (id) => {
-
-    const cleanId =
-      cleanComplaintId(id)
-
-
-    return (
-      `${BASE}/api/complaints/` +
-      `${encodeURIComponent(cleanId)}` +
-      `/proof`
-    )
-  }
-
-}
+  proofUrl: (complaintId) =>
+    `${BASE}/api/complaints/${encodeURIComponent(
+      complaintId
+    )}/proof`,
+};

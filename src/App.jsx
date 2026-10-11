@@ -1,1791 +1,1555 @@
+import React, { useEffect, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { api } from './api';
+import './styles.css';
+const USER_PIN = '1234';
 
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react'
+function LocationMap({ value, onChange }) {
+  const mapRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
 
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
+  const [detecting, setDetecting] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('');
 
-import { api } from './api'
-
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-const statusLabel = (status = '') =>
-  status.replaceAll('_', ' ')
-
-const formatDate = (value) =>
-  value
-    ? new Date(value).toLocaleString()
-    : '—'
-
-
-// ============================================================
-// RED LOCATION ICON
-// ============================================================
-
-const createRedLocationIcon = () =>
-  L.divIcon({
-    className: 'user-location-marker',
-
+  const redIcon = L.divIcon({
+    className: 'custom-location-marker',
     html: `
-      <div class="user-location-pin">
-        <div class="user-location-pulse"></div>
-        <div class="user-location-dot"></div>
-      </div>
+      <div style="
+        width:24px;
+        height:24px;
+        background:#ef4444;
+        border:4px solid white;
+        border-radius:50%;
+        box-shadow:0 4px 14px rgba(239,68,68,.55);
+      "></div>
     `,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+  });
 
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    popupAnchor: [0, -20]
-  })
-
-
-// ============================================================
-// FLOATING BACKGROUND
-// ============================================================
-
-function FloatingOrbs() {
-  return (
-    <div
-      className="ambient"
-      aria-hidden="true"
-    >
-      <span className="orb orb1" />
-      <span className="orb orb2" />
-      <span className="orb orb3" />
-
-      <span className="gridGlow" />
-      <span className="noise" />
-    </div>
-  )
-}
-
-
-// ============================================================
-// BRAND
-// ============================================================
-
-function Brand({ admin = false }) {
-  return (
-    <div className="brand">
-
-      <div className="brandMark">
-        {admin ? '⌘' : '✦'}
-      </div>
-
-      <div>
-        <strong>
-          SMART COMPLAINT
-        </strong>
-
-        <span>
-          {admin
-            ? 'Operations Console'
-            : 'Citizen Service Portal'}
-        </span>
-      </div>
-
-    </div>
-  )
-}
-
-
-// ============================================================
-// TOP BAR
-// ============================================================
-
-function Topbar({
-  admin,
-  onSwitch
-}) {
-  return (
-    <header
-      className={
-        `topbar ${admin ? 'glassbar' : ''}`
-      }
-    >
-
-      <Brand admin={admin} />
-
-      <button
-        type="button"
-        className="switchBtn"
-        onClick={onSwitch}
-      >
-        {admin
-          ? '← USER PORTAL'
-          : 'ADMIN CONSOLE →'}
-      </button>
-
-    </header>
-  )
-}
-
-
-// ============================================================
-// LOGIN
-// ============================================================
-
-function Login({
-  mode,
-  onSuccess,
-  onSwitch
-}) {
-
-  const [value, setValue] =
-    useState('')
-
-  const [error, setError] =
-    useState('')
-
-  const admin = mode === 'admin'
-
-
-  const submit = async (event) => {
-
-    event.preventDefault()
-
-    setError('')
-
+  const reverseGeocode = async (latitude, longitude) => {
     try {
-
-      if (admin) {
-
-        await api.adminLogin(value)
-
-      } else {
-
-        await api.userLogin(value)
-
-      }
-
-      onSuccess()
-
-    } catch (err) {
-
-      setError(
-        err.message ||
-        'Login failed.'
-      )
-
-    }
-  }
-
-
-  return (
-    <div
-      className={
-        admin
-          ? 'adminShell shell'
-          : 'userShell shell'
-      }
-    >
-
-      <FloatingOrbs />
-
-      <Topbar
-        admin={admin}
-        onSwitch={onSwitch}
-      />
-
-      <main className="loginWrap">
-
-        <section className="heroCopy">
-
-          <div className="eyebrow">
-            {admin
-              ? 'LIVE OPERATIONS • SECURE ACCESS'
-              : 'CITY SERVICES • DIGITAL FIRST'}
-          </div>
-
-          <h1>
-
-            {admin ? (
-              <>
-                Manage every
-                <br />
-                <em>complaint.</em>
-              </>
-            ) : (
-              <>
-                Make the issue
-                <br />
-                <em>impossible to miss.</em>
-              </>
-            )}
-
-          </h1>
-
-          <p>
-
-            {admin
-              ? 'A focused glass control room for triage, assignment, evidence review and resolution.'
-              : 'Report an issue, attach proof, pin the exact location and receive a trackable complaint ID.'}
-
-          </p>
-
-          <div className="heroChips">
-
-            <span>
-              01 • REPORT
-            </span>
-
-            <span>
-              02 • LOCATE
-            </span>
-
-            <span>
-              03 • RESOLVE
-            </span>
-
-          </div>
-
-        </section>
-
-
-        <form
-          className="loginCard glassCard"
-          onSubmit={submit}
-        >
-
-          <div className="cardIcon">
-            {admin ? '⌘' : '✦'}
-          </div>
-
-          <span className="miniLabel">
-            {admin
-              ? 'ADMIN ACCESS'
-              : 'USER ACCESS'}
-          </span>
-
-          <h2>
-            {admin
-              ? 'Control room login'
-              : 'Welcome back'}
-          </h2>
-
-          <p>
-            {admin
-              ? 'Enter the administrator password.'
-              : 'Enter your 4-digit citizen PIN.'}
-          </p>
-
-          <input
-            autoFocus
-            value={value}
-            onChange={(event) =>
-              setValue(event.target.value)
-            }
-            type="password"
-            inputMode={
-              admin
-                ? 'text'
-                : 'numeric'
-            }
-            maxLength={
-              admin
-                ? 60
-                : 4
-            }
-            placeholder={
-              admin
-                ? 'admin123'
-                : '1234'
-            }
-          />
-
-          <button className="primaryBtn">
-            {admin
-              ? 'OPEN CONSOLE'
-              : 'ENTER PORTAL'}
-
-            <span>
-              ↗
-            </span>
-          </button>
-
-          {error && (
-            <div className="errorBox">
-              ⚠ {error}
-            </div>
-          )}
-
-          <div className="demoHint">
-            Demo {admin
-              ? 'password'
-              : 'PIN'}:
-
-            <b>
-              {admin
-                ? 'admin123'
-                : '1234'}
-            </b>
-          </div>
-
-        </form>
-
-      </main>
-
-    </div>
-  )
-}
-
-
-// ============================================================
-// LOCATION MAP
-// ============================================================
-
-function LocationMap({
-  onChange
-}) {
-
-  const mapContainerRef =
-    useRef(null)
-
-  const mapRef =
-    useRef(null)
-
-  const markerRef =
-    useRef(null)
-
-  const [address, setAddress] =
-    useState('')
-
-  const [locating, setLocating] =
-    useState(false)
-
-
-  // ----------------------------------------------------------
-  // Reverse geocoding
-  // ----------------------------------------------------------
-
-  const reverseGeocode = async (
-    latitude,
-    longitude
-  ) => {
-
-    try {
-
-      const response =
-        await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-          {
-            headers: {
-              Accept:
-                'application/json'
-            }
-          }
-        )
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`
+      );
 
       if (!response.ok) {
-        return ''
+        return '';
       }
 
-      const data =
-        await response.json()
-
-      return (
-        data.display_name ||
-        ''
-      )
-
+      const data = await response.json();
+      return data.display_name || '';
     } catch (error) {
-
-      console.warn(
-        'Address lookup failed:',
-        error
-      )
-
-      return ''
+      console.error('Reverse geocoding failed:', error);
+      return '';
     }
-  }
+  };
 
-
-  // ----------------------------------------------------------
-  // Put red marker and update location
-  // ----------------------------------------------------------
-
-  const updateLocation = async (
-    latitude,
-    longitude,
-    autoOpen = false
-  ) => {
-
-    const map =
-      mapRef.current
-
-    if (!map) {
-      return
+  const updateLocation = async (latitude, longitude, automatic = false) => {
+    if (!mapInstanceRef.current) {
+      return;
     }
 
-
-    setLocating(true)
-
-
-    // Remove previous marker
+    const map = mapInstanceRef.current;
 
     if (markerRef.current) {
-
-      markerRef.current.remove()
-
-      markerRef.current = null
+      map.removeLayer(markerRef.current);
     }
 
-
-    // Create RED marker
-
-    markerRef.current =
-      L.marker(
-        [latitude, longitude],
-        {
-          icon:
-            createRedLocationIcon()
-        }
-      )
-        .addTo(map)
-        .bindPopup(
-          '<b>📍 Your Location</b>'
-        )
-
-
-    // Move map
-
-    map.setView(
-      [
-        latitude,
-        longitude
-      ],
-      17,
-      {
-        animate: true
-      }
+    markerRef.current = L.marker(
+      [latitude, longitude],
+      { icon: redIcon }
     )
+      .addTo(map)
+      .bindPopup('Complaint Location')
+      .openPopup();
 
+    map.setView([latitude, longitude], 16);
 
-    // Find address
-
-    const addr =
-      await reverseGeocode(
-        latitude,
-        longitude
-      )
-
-
-    setAddress(addr)
-
-
-    // Send location to UserPortal
+    const address = await reverseGeocode(latitude, longitude);
 
     onChange({
       latitude,
       longitude,
-      address: addr
-    })
+      address,
+    });
 
-
-    setLocating(false)
-
-
-    // Open popup automatically
-
-    if (
-      autoOpen &&
-      markerRef.current
-    ) {
-
-      setTimeout(() => {
-
-        markerRef.current?.openPopup()
-
-      }, 500)
-
-    }
-  }
-
-
-  // ----------------------------------------------------------
-  // Browser GPS
-  // ----------------------------------------------------------
+    setLocationMessage(
+      automatic
+        ? 'Your current location has been detected.'
+        : 'Complaint location selected.'
+    );
+  };
 
   const locateUser = () => {
-
     if (!navigator.geolocation) {
-
-      alert(
+      setLocationMessage(
         'Geolocation is not supported by this browser.'
-      )
-
-      return
+      );
+      return;
     }
 
-
-    setLocating(true)
-
+    setDetecting(true);
+    setLocationMessage('Detecting your location...');
 
     navigator.geolocation.getCurrentPosition(
-
-      (position) => {
-
-        const {
-          latitude,
-          longitude
-        } = position.coords
-
-
-        updateLocation(
-          latitude,
-          longitude,
+      async (position) => {
+        await updateLocation(
+          position.coords.latitude,
+          position.coords.longitude,
           true
-        )
+        );
 
+        setDetecting(false);
       },
-
-
       (error) => {
+        console.error('Location error:', error);
 
-        console.error(
-          'Geolocation error:',
-          error
-        )
+        setDetecting(false);
 
-        setLocating(false)
-
-
-        if (
-          error.code ===
-          error.PERMISSION_DENIED
-        ) {
-
-          alert(
-            'Location permission was denied. Please allow location access for localhost.'
-          )
-
-        } else if (
-          error.code ===
-          error.TIMEOUT
-        ) {
-
-          alert(
-            'Location request timed out. Please try again.'
-          )
-
-        } else {
-
-          alert(
-            'Unable to detect your location. Please try again.'
-          )
-        }
+        setLocationMessage(
+          'Unable to detect location. Please allow location permission.'
+        );
       },
-
-
       {
         enableHighAccuracy: true,
         timeout: 15000,
-        maximumAge: 0
+        maximumAge: 0,
       }
-    )
-  }
-
-
-  // ----------------------------------------------------------
-  // Create Leaflet map
-  // ----------------------------------------------------------
+    );
+  };
 
   useEffect(() => {
-
-    if (
-      !mapContainerRef.current ||
-      mapRef.current
-    ) {
-      return
+    if (!mapRef.current || mapInstanceRef.current) {
+      return;
     }
 
+    const map = L.map(mapRef.current, {
+      center: [
+        value?.latitude || 17.385,
+        value?.longitude || 78.4867,
+      ],
+      zoom: value?.latitude ? 16 : 12,
+    });
 
-    const map =
-      L.map(
-        mapContainerRef.current,
-        {
-          zoomControl: true,
-          attributionControl: true
-        }
-      )
-
-
-    map.setView(
-      [17.3850, 78.4867],
-      12
-    )
-
-
-    // OpenStreetMap tiles
+    mapInstanceRef.current = map;
 
     L.tileLayer(
       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
         maxZoom: 19,
-
         attribution:
-          '&copy; OpenStreetMap contributors'
+          '&copy; OpenStreetMap contributors',
       }
-    ).addTo(map)
+    ).addTo(map);
 
-
-    mapRef.current = map
-
-
-    // Fix Leaflet rendering
+    map.on('click', async (event) => {
+      await updateLocation(
+        event.latlng.lat,
+        event.latlng.lng,
+        false
+      );
+    });
 
     setTimeout(() => {
-
-      map.invalidateSize()
-
-    }, 300)
-
-
-    // Click map
-
-    const handleMapClick =
-      (event) => {
-
-        updateLocation(
-          event.latlng.lat,
-          event.latlng.lng,
-          false
-        )
-      }
-
-
-    map.on(
-      'click',
-      handleMapClick
-    )
-
-
-    // Automatically detect user location
-
-    locateUser()
-
-
-    // Cleanup
+      map.invalidateSize();
+    }, 300);
 
     return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      markerRef.current = null;
+    };
+  }, []);
 
-      map.off(
-        'click',
-        handleMapClick
-      )
+  useEffect(() => {
+    if (
+      value?.latitude != null &&
+      value?.longitude != null &&
+      mapInstanceRef.current
+    ) {
+      const map = mapInstanceRef.current;
 
-      map.remove()
+      if (markerRef.current) {
+        map.removeLayer(markerRef.current);
+      }
 
-      mapRef.current = null
+      markerRef.current = L.marker(
+        [value.latitude, value.longitude],
+        { icon: redIcon }
+      ).addTo(map);
 
-      markerRef.current = null
+      map.setView(
+        [value.latitude, value.longitude],
+        16
+      );
     }
-
-  }, [])
-
+  }, [value?.latitude, value?.longitude]);
 
   return (
-    <div>
+    <div className="location-wrapper">
 
-      {/* MAP */}
+      <div className="location-toolbar">
+        <div>
+          <strong>Complaint Location</strong>
 
-      <div
-        ref={mapContainerRef}
-        className="map"
-        style={{
-          width: '100%',
-          height: '540px',
-          minHeight: '400px',
-          borderRadius: '20px',
-          overflow: 'hidden'
-        }}
-      />
-
-
-      {/* MAP CONTROLS */}
-
-      <div className="mapBottom">
+          <div className="location-help">
+            Click on the map or use your current location.
+          </div>
+        </div>
 
         <button
           type="button"
-          className="softBtn"
+          className="location-button"
           onClick={locateUser}
-          disabled={locating}
+          disabled={detecting}
         >
-
-          {locating
-            ? '⌖ LOCATING...'
-            : '⌖ USE MY LOCATION'}
-
+          {detecting
+            ? 'DETECTING...'
+            : '📍 USE MY LOCATION'}
         </button>
-
-
-        <span>
-          {address ||
-            'Detecting your location...'}
-        </span>
-
       </div>
 
+      <div
+        ref={mapRef}
+        className="complaint-map"
+      />
 
-      {/* LOCATION STATUS */}
-
-      {address && (
-
-        <div className="locationDetected">
-
-          <span className="locationRedDot" />
-
-          <div>
-
-            <strong>
-              YOUR LOCATION DETECTED
-            </strong>
-
-            <small>
-              {address}
-            </small>
-
-          </div>
-
+      {locationMessage && (
+        <div className="location-message">
+          {locationMessage}
         </div>
-
       )}
 
+      {value?.latitude != null &&
+        value?.longitude != null && (
+          <div className="coordinates">
+            <span>
+              Latitude: {Number(value.latitude).toFixed(6)}
+            </span>
+
+            <span>
+              Longitude: {Number(value.longitude).toFixed(6)}
+            </span>
+          </div>
+        )}
+
+      {value?.address && (
+        <div className="address-box">
+          <strong>Address:</strong>
+          <br />
+          {value.address}
+        </div>
+      )}
     </div>
-  )
+  );
 }
 
+function App() {
+  const [page, setPage] = useState('login');
+  const [userLoggedIn, setUserLoggedIn] = useState(false);
+  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
 
-// ============================================================
-// USER PORTAL
-// ============================================================
+  const [userPin, setUserPin] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
 
-function UserPortal({
-  onSwitch
-}) {
+  const [message, setMessage] = useState('');
 
-  const [location, setLocation] =
-    useState({})
+  const [proof, setProof] = useState(null);
+  const [proofPreview, setProofPreview] = useState('');
 
-  const [proof, setProof] =
-    useState(null)
+  const [location, setLocation] = useState({});
 
-  const [message, setMessage] =
-    useState('')
+  const [complaints, setComplaints] = useState([]);
+  const [selectedComplaint, setSelectedComplaint] = useState(null);
 
-  const [trackId, setTrackId] =
-    useState('')
+  const [loading, setLoading] = useState(false);
 
-  const [tracked, setTracked] =
-    useState(null)
+  const [adminSearch, setAdminSearch] = useState('');
+  const [adminFilter, setAdminFilter] = useState('ALL');
 
+  const [staffName, setStaffName] = useState('');
 
-  // ----------------------------------------------------------
-  // Submit complaint
-  // ----------------------------------------------------------
+  const getUserId = () => {
+    let userId = localStorage.getItem(
+      'smartComplaintUserId'
+    );
+
+    if (!userId) {
+      userId =
+        `USER-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+
+      localStorage.setItem(
+        'smartComplaintUserId',
+        userId
+      );
+    }
+
+    return userId;
+  };
+
+  const loadMyComplaints = async () => {
+    try {
+      setLoading(true);
+
+      const userId = getUserId();
+
+      const data = await api.myComplaints(userId);
+
+      setComplaints(
+        Array.isArray(data) ? data : []
+      );
+    } catch (error) {
+      console.error(error);
+
+      setMessage(
+        error.message ||
+          'Unable to load your complaints.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAllComplaints = async () => {
+    try {
+      setLoading(true);
+
+      const data = await api.allComplaints();
+
+      setComplaints(
+        Array.isArray(data) ? data : []
+      );
+    } catch (error) {
+      console.error(error);
+
+      setMessage(
+        error.message ||
+          'Unable to load complaints.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUserLogin = (event) => {
+    event.preventDefault();
+    setMessage('');
+
+    if (userPin !== USER_PIN) {
+      setMessage(
+        'Invalid user PIN. Please try again.'
+      );
+      return;
+    }
+
+    getUserId();
+
+    setUserLoggedIn(true);
+    setUserPin('');
+    setPage('user');
+    loadMyComplaints();
+  };
+
+  const handleAdminLogin = async (event) => {
+    event.preventDefault();
+    setMessage('');
+
+    try {
+      setLoading(true);
+
+      await api.adminLogin(adminPassword);
+
+      setAdminLoggedIn(true);
+      setAdminPassword('');
+      setPage('admin');
+
+      await loadAllComplaints();
+    } catch (error) {
+      console.error(error);
+
+      setMessage(
+        error.message ||
+          'Invalid admin password.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setUserLoggedIn(false);
+    setAdminLoggedIn(false);
+    setPage('login');
+    setMessage('');
+    setComplaints([]);
+  };
+
+  const handleProofChange = (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      setProof(null);
+      setProofPreview('');
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      setMessage(
+        'Please select an image file.'
+      );
+
+      event.target.value = '';
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage(
+        'Proof image must be smaller than 10 MB.'
+      );
+
+      event.target.value = '';
+      return;
+    }
+
+    setProof(file);
+    setProofPreview(
+      URL.createObjectURL(file)
+    );
+
+    setMessage('');
+  };
 
   const submit = async (event) => {
+  event.preventDefault();
+  setMessage('');
 
-    event.preventDefault()
+  // IMPORTANT: save the form element before any await
+  const formElement = event.currentTarget;
 
-    setMessage('')
+  try {
+    const form = new FormData(formElement);
 
+    let userId = localStorage.getItem('smartComplaintUserId');
 
-    const form =
-      new FormData(
-        event.currentTarget
-      )
+    if (!userId) {
+      userId = `USER-${crypto.randomUUID()
+        .slice(0, 8)
+        .toUpperCase()}`;
 
+      localStorage.setItem(
+        'smartComplaintUserId',
+        userId
+      );
+    }
 
-    // Add location
+    form.set('userId', userId);
+
+    const type = String(
+      form.get('type') || ''
+    ).trim();
+
+    const description = String(
+      form.get('description') || ''
+    ).trim();
+
+    if (!type) {
+      setMessage('Please select a complaint type.');
+      return;
+    }
+
+    if (!description) {
+      setMessage(
+        'Please enter a complaint description.'
+      );
+      return;
+    }
+
+    form.set('type', type);
+    form.set('description', description);
+
+    if (proof instanceof File) {
+      form.set('proof', proof);
+    }
 
     if (
+      location &&
       location.latitude != null &&
       location.longitude != null
     ) {
-
       form.set(
         'latitude',
         String(location.latitude)
-      )
+      );
 
       form.set(
         'longitude',
         String(location.longitude)
-      )
+      );
 
       form.set(
         'address',
         location.address || ''
-      )
+      );
     }
 
+    const response =
+      await api.createComplaint(form);
 
-    // Add proof image
-
-    if (proof) {
-
-      form.set(
-        'proof',
-        proof
-      )
+    if (!response?.complaintId) {
+      throw new Error(
+        'Complaint was not created. Please try again.'
+      );
     }
 
+    setMessage(
+      `Complaint submitted successfully! Your Complaint ID is ${response.complaintId}`
+    );
 
+    // Reset using the saved reference
+    if (formElement) {
+      formElement.reset();
+    }
+
+    setProof(null);
+    setLocation({});
+
+    if (
+      typeof loadMyComplaints === 'function'
+    ) {
+      await loadMyComplaints();
+    }
+
+  } catch (error) {
+    console.error(
+      'Complaint submission error:',
+      error
+    );
+
+    setMessage(
+      error.message ||
+        'Unable to submit complaint. Please try again.'
+    );
+  }
+};
+
+  const trackComplaint = async (complaintId) => {
     try {
+      setLoading(true);
 
       const data =
-        await api.createComplaint(
-          form
-        )
+        await api.getComplaint(
+          complaintId
+        );
 
-
-      setMessage(
-        `Submitted successfully. Your complaint ID is ${data.complaintId}.`
-      )
-
-
-      event.currentTarget.reset()
-
-      setProof(null)
-
-      setLocation({})
+      setSelectedComplaint(data);
 
     } catch (error) {
+      setMessage(
+        error.message ||
+          'Unable to find complaint.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateComplaint = async (
+    complaintId,
+    status,
+    assignedStaff
+  ) => {
+    try {
+      setLoading(true);
+
+      await api.updateComplaint(
+        complaintId,
+        {
+          status,
+          assignedStaff,
+        }
+      );
+
+      setMessage(
+        'Complaint updated successfully.'
+      );
+
+      await loadAllComplaints();
+
+    } catch (error) {
+      console.error(error);
 
       setMessage(
         error.message ||
-        'Unable to submit complaint.'
-      )
+          'Unable to update complaint.'
+      );
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
+  const filteredAdminComplaints =
+    complaints.filter((complaint) => {
+      const search =
+        adminSearch.toLowerCase();
 
-  // ----------------------------------------------------------
-  // Track complaint
-  // ----------------------------------------------------------
+      const matchesSearch =
+        !search ||
+        complaint.complaintId
+          ?.toLowerCase()
+          .includes(search) ||
+        complaint.type
+          ?.toLowerCase()
+          .includes(search) ||
+        complaint.description
+          ?.toLowerCase()
+          .includes(search) ||
+        complaint.contact
+          ?.toLowerCase()
+          .includes(search);
 
-  const track = async () => {
+      const matchesStatus =
+        adminFilter === 'ALL' ||
+        complaint.status === adminFilter;
 
-    /*
-     * Remove punctuation accidentally copied
-     * after the complaint ID.
-     *
-     * CMP-2E1BE4BB.
-     * becomes
-     * CMP-2E1BE4BB
-     */
+      return (
+        matchesSearch &&
+        matchesStatus
+      );
+    });
 
-    const cleanId =
-      trackId
-        .trim()
-        .replace(
-          /[.,;:!?]+$/g,
-          ''
-        )
-        .trim()
+  const totalComplaints =
+    complaints.length;
 
+  const pendingComplaints =
+    complaints.filter(
+      (c) => c.status === 'PENDING'
+    ).length;
 
-    if (!cleanId) {
+  const progressComplaints =
+    complaints.filter(
+      (c) => c.status === 'IN_PROGRESS'
+    ).length;
 
-      setTracked({
-        error:
-          'Please enter a complaint ID.'
-      })
+  const resolvedComplaints =
+    complaints.filter(
+      (c) => c.status === 'RESOLVED'
+    ).length;
 
-      return
-    }
+  useEffect(() => {
+    return () => {
+      if (proofPreview) {
+        URL.revokeObjectURL(
+          proofPreview
+        );
+      }
+    };
+  }, [proofPreview]);
 
+  if (page === 'login') {
+    return (
+      <div className="app-shell login-shell">
 
-    try {
+        <div className="floating-orb orb-one" />
+        <div className="floating-orb orb-two" />
+        <div className="floating-orb orb-three" />
 
-      const result =
-        await api.getComplaint(
-          cleanId
-        )
+        <div className="login-card">
 
-      setTracked(result)
-
-    } catch (error) {
-
-      setTracked({
-        error:
-          error.message
-      })
-    }
-  }
-
-
-  return (
-    <div className="userShell shell">
-
-      <FloatingOrbs />
-
-      <Topbar
-        onSwitch={onSwitch}
-      />
-
-
-      <main className="portal">
-
-
-        {/* HERO */}
-
-        <div className="sectionIntro">
-
-          <div>
-
-            <span className="eyebrow">
-              CITIZEN PORTAL
-            </span>
-
-            <h1>
-
-              Turn a complaint
-              <br />
-
-              <em>
-                into action.
-              </em>
-
-            </h1>
-
+          <div className="brand-icon">
+            🛡️
           </div>
 
-
-          <div className="floatingBadge">
-
-            ✦ PROOF + LOCATION
-
-            <br />
-
-            <small>
-              One report. One ID.
-            </small>
-
+          <div className="brand-title">
+            SMART COMPLAINT
           </div>
 
-        </div>
+          <div className="brand-subtitle">
+            MANAGEMENT SYSTEM
+          </div>
 
+          <p className="login-description">
+            Register, track and manage public
+            complaints with complete transparency.
+          </p>
 
-        {/* MAIN GRID */}
-
-        <div className="portalGrid">
-
-
-          {/* COMPLAINT FORM */}
+          {message && (
+            <div className="message error-message">
+              {message}
+            </div>
+          )}
 
           <form
-            className="glassCard complaintCard"
-            onSubmit={submit}
+            onSubmit={handleUserLogin}
+            className="login-form"
           >
 
-            <div className="cardHeader">
-
-              <div>
-
-                <span className="miniLabel">
-                  NEW REPORT
-                </span>
-
-                <h2>
-                  What happened?
-                </h2>
-
-              </div>
-
-              <span className="step">
-                01
-              </span>
-
-            </div>
-
-
-            {/* TYPE */}
-
             <label>
-
-              Complaint type
-
-              <select
-                name="type"
-                required
-              >
-
-                <option>
-                  Road / Street
-                </option>
-
-                <option>
-                  Water Supply
-                </option>
-
-                <option>
-                  Garbage / Sanitation
-                </option>
-
-                <option>
-                  Electricity
-                </option>
-
-                <option>
-                  Public Safety
-                </option>
-
-                <option>
-                  Other
-                </option>
-
-              </select>
-
+              USER PIN
             </label>
 
-
-            {/* DESCRIPTION */}
-
-            <label>
-
-              Description
-
-              <textarea
-                name="description"
-                required
-                placeholder="Describe the issue, where it happened, and anything useful for the department."
-              />
-
-            </label>
-
-
-            {/* CONTACT */}
-
-            <label>
-
-              Contact information
-
-              <input
-                name="contact"
-                required
-                placeholder="Phone or email"
-              />
-
-            </label>
-
-
-            {/* PROOF */}
-
-            <div className="proofBox">
-
-              <div>
-
-                <span className="miniLabel">
-                  EVIDENCE
-                </span>
-
-                <h3>
-                  Attach proof photo
-                </h3>
-
-                <p>
-                  JPG, PNG or WEBP • max 10 MB
-                </p>
-
-              </div>
-
-
-              <label className="uploadBtn">
-
-                + CHOOSE PHOTO
-
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(event) =>
-                    setProof(
-                      event.target.files?.[0] ||
-                      null
-                    )
-                  }
-                />
-
-              </label>
-
-
-              {proof && (
-
-                <div className="proofPreview">
-
-                  <img
-                    src={
-                      URL.createObjectURL(
-                        proof
-                      )
-                    }
-                    alt="Proof preview"
-                  />
-
-                  <span>
-                    {proof.name}
-                  </span>
-
-                </div>
-
-              )}
-
-            </div>
-
-
-            {/* SUBMIT */}
+            <input
+              type="password"
+              maxLength="4"
+              value={userPin}
+              onChange={(event) =>
+                setUserPin(
+                  event.target.value.replace(
+                    /\D/g,
+                    ''
+                  )
+                )
+              }
+              placeholder="Enter 4-digit PIN"
+            />
 
             <button
+              className="primary-button"
               type="submit"
-              className="primaryBtn big"
             >
-
-              SUBMIT COMPLAINT
-
-              <span>
-                ↗
-              </span>
-
+              ENTER USER PORTAL →
             </button>
-
-
-            {message && (
-
-              <div className="successBox">
-                {message}
-              </div>
-
-            )}
 
           </form>
 
+          <div className="login-divider">
+            OR
+          </div>
 
-          {/* LOCATION */}
+          <button
+            className="secondary-button"
+            onClick={() => {
+              setMessage('');
+              setPage('adminLogin');
+            }}
+          >
+            👨‍💼 ADMIN PORTAL
+          </button>
 
-          <section
-            className="glassCard mapCard"
+          <div className="demo-info">
+            User demo PIN: <strong>1234</strong>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+  if (page === 'adminLogin') {
+    return (
+      <div className="app-shell admin-login-shell">
+
+        <div className="glass-login-card">
+
+          <div className="admin-logo">
+            👨‍💼
+          </div>
+
+          <h1>
+            ADMIN CONSOLE
+          </h1>
+
+          <p>
+            Secure complaint management portal
+          </p>
+
+          {message && (
+            <div className="message error-message">
+              {message}
+            </div>
+          )}
+
+          <form
+            onSubmit={handleAdminLogin}
+            className="login-form"
           >
 
-            <div className="cardHeader">
+            <label>
+              ADMIN PASSWORD
+            </label>
 
-              <div>
-
-                <span className="miniLabel">
-                  LOCATION
-                </span>
-
-                <h2>
-                  Pin the issue
-                </h2>
-
-              </div>
-
-              <span className="step">
-                02
-              </span>
-
-            </div>
-
-
-            <LocationMap
-              onChange={
-                setLocation
+            <input
+              type="password"
+              value={adminPassword}
+              onChange={(event) =>
+                setAdminPassword(
+                  event.target.value
+                )
               }
+              placeholder="Enter admin password"
             />
 
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={loading}
+            >
+              {loading
+                ? 'AUTHENTICATING...'
+                : 'ACCESS ADMIN CONSOLE →'}
+            </button>
 
-            <div className="locationMeta">
+          </form>
 
-              <span>
-                ● LOCATION IS OPTIONAL
-              </span>
+          <button
+            className="back-button"
+            onClick={() => {
+              setMessage('');
+              setPage('login');
+            }}
+          >
+            ← BACK TO LOGIN
+          </button>
 
-              <span>
-                OPENSTREETMAP
-              </span>
+        </div>
+      </div>
+    );
+  }
 
+  if (
+    page === 'user' &&
+    userLoggedIn
+  ) {
+    return (
+      <div className="app-shell">
+
+        <header className="top-header">
+
+          <div>
+            <div className="header-brand">
+              SMART COMPLAINT
+            </div>
+
+            <div className="header-small">
+              CITIZEN PORTAL
+            </div>
+          </div>
+
+          <div className="header-actions">
+
+            <button
+              onClick={() => {
+                setPage('user');
+                loadMyComplaints();
+              }}
+            >
+              MY COMPLAINTS
+            </button>
+
+            <button
+              onClick={() => {
+                setMessage('');
+                setPage('submit');
+              }}
+            >
+              + NEW COMPLAINT
+            </button>
+
+            <button
+              className="logout-button"
+              onClick={handleLogout}
+            >
+              LOGOUT
+            </button>
+
+          </div>
+
+        </header>
+
+        <main className="user-dashboard">
+
+          <section className="hero-section">
+
+            <div>
+              <div className="eyebrow">
+                CITIZEN SERVICES
+              </div>
+
+              <h1>
+                Your voice.
+                <br />
+                Your complaint.
+                <br />
+                Your city.
+              </h1>
+
+              <p>
+                Submit public complaints, attach
+                proof, share your location and
+                track every update.
+              </p>
+
+              <button
+                className="big-action-button"
+                onClick={() => {
+                  setMessage('');
+                  setPage('submit');
+                }}
+              >
+                FILE A COMPLAINT →
+              </button>
+            </div>
+
+            <div className="hero-card">
+              <div className="hero-card-number">
+                {totalComplaints}
+              </div>
+
+              <div>
+                TOTAL COMPLAINTS
+              </div>
+
+              <div className="hero-card-line" />
+
+              <div className="hero-status">
+                <span>
+                  PENDING
+                  <strong>
+                    {pendingComplaints}
+                  </strong>
+                </span>
+
+                <span>
+                  IN PROGRESS
+                  <strong>
+                    {progressComplaints}
+                  </strong>
+                </span>
+
+                <span>
+                  RESOLVED
+                  <strong>
+                    {resolvedComplaints}
+                  </strong>
+                </span>
+              </div>
             </div>
 
           </section>
 
-        </div>
+          {message && (
+            <div className="message success-message">
+              {message}
+            </div>
+          )}
 
+          <section className="complaints-section">
 
-        {/* TRACKING */}
+            <div className="section-heading">
+              <div>
+                <div className="eyebrow">
+                  HISTORY
+                </div>
 
-        <section
-          className="glassCard tracker"
-        >
+                <h2>
+                  MY COMPLAINTS
+                </h2>
+              </div>
 
-          <div>
+              <button
+                className="refresh-button"
+                onClick={loadMyComplaints}
+              >
+                ↻ REFRESH
+              </button>
+            </div>
 
-            <span className="miniLabel">
-              TRACKING
-            </span>
+            {loading ? (
+              <div className="empty-card">
+                Loading complaints...
+              </div>
+            ) : complaints.length === 0 ? (
+              <div className="empty-card">
+                <div className="empty-icon">
+                  📋
+                </div>
 
-            <h2>
-              Where is my complaint?
-            </h2>
+                <h3>
+                  No complaints yet
+                </h3>
 
-          </div>
+                <p>
+                  Your submitted complaints
+                  will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="complaint-grid">
 
-
-          <div className="trackRow">
-
-            <input
-              value={trackId}
-              onChange={(event) =>
-                setTrackId(
-                  event.target.value
-                )
-              }
-              placeholder="Enter CMP-XXXXXXXX"
-            />
-
-            <button
-              type="button"
-              className="primaryBtn"
-              onClick={track}
-            >
-              CHECK STATUS
-            </button>
-
-          </div>
-
-
-          {tracked && (
-
-            <div className="trackResult">
-
-              {tracked.error ? (
-
-                <b>
-                  ⚠ {tracked.error}
-                </b>
-
-              ) : (
-
-                <>
-
-                  <strong>
-                    {tracked.complaintId}
-                  </strong>
-
-                  <span>
-                    {statusLabel(
-                      tracked.status
-                    )}
-                  </span>
-
-                  <p>
-                    {tracked.type}
-                    {' • '}
-                    Updated{' '}
-                    {formatDate(
-                      tracked.updatedAt
-                    )}
-                  </p>
-
-
-                  {tracked.address && (
-
-                    <small>
-                      📍 {tracked.address}
-                    </small>
-
-                  )}
-
-                  {tracked.latitude != null &&
-                    tracked.longitude != null && (
-
+                {complaints.map(
+                  (complaint) => (
                     <div
-                      style={{
-                        marginTop: '10px',
-                        fontSize: '12px',
-                        opacity: 0.7
-                      }}
+                      className="complaint-card"
+                      key={
+                        complaint.complaintId
+                      }
                     >
-                      Coordinates:{' '}
-                      {Number(
-                        tracked.latitude
-                      ).toFixed(6)}
-                      {' , '}
-                      {Number(
-                        tracked.longitude
-                      ).toFixed(6)}
+
+                      <div className="complaint-card-top">
+
+                        <span className="complaint-id">
+                          {complaint.complaintId}
+                        </span>
+
+                        <span
+                          className={`status-badge status-${String(
+                            complaint.status ||
+                              'PENDING'
+                          ).toLowerCase()}`}
+                        >
+                          {complaint.status ||
+                            'PENDING'}
+                        </span>
+
+                      </div>
+
+                      <h3>
+                        {complaint.type}
+                      </h3>
+
+                      <p>
+                        {complaint.description}
+                      </p>
+
+                      <div className="complaint-meta">
+
+                        <span>
+                          📅{' '}
+                          {complaint.createdAt
+                            ? new Date(
+                                complaint.createdAt
+                              ).toLocaleString()
+                            : 'N/A'}
+                        </span>
+
+                        {complaint.address && (
+                          <span>
+                            📍{' '}
+                            {complaint.address}
+                          </span>
+                        )}
+
+                      </div>
+
+                      <button
+                        className="track-button"
+                        onClick={() =>
+                          trackComplaint(
+                            complaint.complaintId
+                          )
+                        }
+                      >
+                        TRACK COMPLAINT →
+                      </button>
+
                     </div>
+                  )
+                )}
 
-                  )}
+              </div>
+            )}
 
-                </>
+          </section>
 
+        </main>
+
+        {selectedComplaint && (
+          <div
+            className="modal-overlay"
+            onClick={() =>
+              setSelectedComplaint(null)
+            }
+          >
+            <div
+              className="modal-card"
+              onClick={(event) =>
+                event.stopPropagation()
+              }
+            >
+
+              <button
+                className="modal-close"
+                onClick={() =>
+                  setSelectedComplaint(null)
+                }
+              >
+                ×
+              </button>
+
+              <div className="eyebrow">
+                COMPLAINT TRACKING
+              </div>
+
+              <h2>
+                {selectedComplaint.complaintId}
+              </h2>
+
+              <div className="tracking-status">
+                <span
+                  className={`status-badge status-${String(
+                    selectedComplaint.status
+                  ).toLowerCase()}`}
+                >
+                  {selectedComplaint.status}
+                </span>
+              </div>
+
+              <div className="detail-row">
+                <strong>Type</strong>
+                <span>
+                  {selectedComplaint.type}
+                </span>
+              </div>
+
+              <div className="detail-row">
+                <strong>Description</strong>
+                <span>
+                  {selectedComplaint.description}
+                </span>
+              </div>
+
+              <div className="detail-row">
+                <strong>Contact</strong>
+                <span>
+                  {selectedComplaint.contact ||
+                    'Not provided'}
+                </span>
+              </div>
+
+              <div className="detail-row">
+                <strong>Assigned Staff</strong>
+                <span>
+                  {selectedComplaint.assignedStaff ||
+                    'Not assigned'}
+                </span>
+              </div>
+
+              {selectedComplaint.address && (
+                <div className="detail-row">
+                  <strong>Location</strong>
+                  <span>
+                    {selectedComplaint.address}
+                  </span>
+                </div>
               )}
 
             </div>
+          </div>
+        )}
 
-          )}
-
-        </section>
-
-      </main>
-
-    </div>
-  )
-}
-
-
-// ============================================================
-// ADMIN MINI MAP
-// ============================================================
-
-function MiniMap({
-  lat,
-  lng,
-  id
-}) {
-
-  const ref =
-    useRef(null)
-
-
-  useEffect(() => {
-
-    if (
-      !ref.current ||
-      lat == null ||
-      lng == null
-    ) {
-      return
-    }
-
-
-    const map =
-      L.map(
-        ref.current,
-        {
-          zoomControl: false,
-          attributionControl: false
-        }
-      )
-
-
-    map.setView(
-      [lat, lng],
-      15
-    )
-
-
-    L.tileLayer(
-      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      {
-        maxZoom: 19
-      }
-    ).addTo(map)
-
-
-    // RED marker for complaint location
-
-    L.marker(
-      [lat, lng],
-      {
-        icon:
-          createRedLocationIcon()
-      }
-    )
-      .addTo(map)
-      .bindPopup(
-        `<b>📍 Complaint Location</b><br/>${id}`
-      )
-
-
-    setTimeout(() => {
-      map.invalidateSize()
-    }, 200)
-
-
-    return () => {
-
-      map.remove()
-
-    }
-
-  }, [lat, lng, id])
-
-
-  return (
-    <div
-      ref={ref}
-      className="miniMap"
-      title={
-        `Location ${id}`
-      }
-    />
-  )
-}
-
-
-// ============================================================
-// ADMIN PORTAL
-// ============================================================
-
-function AdminPortal({
-  onSwitch
-}) {
-
-  const [data, setData] =
-    useState([])
-
-  const [filter, setFilter] =
-    useState('ALL')
-
-  const [search, setSearch] =
-    useState('')
-
-  const [selected, setSelected] =
-    useState(null)
-
-
-  // ----------------------------------------------------------
-  // Load complaints
-  // ----------------------------------------------------------
-
-  const load = async () => {
-
-    try {
-
-      const complaints =
-        await api.allComplaints()
-
-      setData(
-        Array.isArray(
-          complaints
-        )
-          ? complaints
-          : []
-      )
-
-    } catch (error) {
-
-      console.error(
-        'Failed to load complaints:',
-        error
-      )
-
-      setData([])
-    }
+      </div>
+    );
   }
 
+  if (
+    page === 'submit' &&
+    userLoggedIn
+  ) {
+    return (
+      <div className="app-shell">
 
-  useEffect(() => {
-
-    load()
-
-  }, [])
-
-
-  // ----------------------------------------------------------
-  // Filter complaints
-  // ----------------------------------------------------------
-
-  const visible =
-    useMemo(() => {
-
-      const query =
-        search.toLowerCase()
-
-      return data.filter(
-        (complaint) => {
-
-          const matchesStatus =
-            filter === 'ALL' ||
-            complaint.status === filter
-
-
-          const searchable =
-            `
-              ${complaint.complaintId || ''}
-              ${complaint.type || ''}
-              ${complaint.description || ''}
-              ${complaint.contact || ''}
-              ${complaint.address || ''}
-            `.toLowerCase()
-
-
-          return (
-            matchesStatus &&
-            searchable.includes(query)
-          )
-        }
-      )
-
-    }, [
-      data,
-      filter,
-      search
-    ])
-
-
-  // ----------------------------------------------------------
-  // Statistics
-  // ----------------------------------------------------------
-
-  const counts = {
-
-    total:
-      data.length,
-
-    pending:
-      data.filter(
-        item =>
-          item.status ===
-          'PENDING'
-      ).length,
-
-    progress:
-      data.filter(
-        item =>
-          item.status ===
-          'IN_PROGRESS'
-      ).length,
-
-    resolved:
-      data.filter(
-        item =>
-          item.status ===
-          'RESOLVED'
-      ).length
-
-  }
-
-
-  // ----------------------------------------------------------
-  // Update complaint
-  // ----------------------------------------------------------
-
-  const update = async (
-    id,
-    body
-  ) => {
-
-    try {
-
-      await api.updateComplaint(
-        id,
-        body
-      )
-
-      await load()
-
-    } catch (error) {
-
-      alert(
-        error.message ||
-        'Unable to update complaint.'
-      )
-    }
-  }
-
-
-  return (
-    <div className="adminShell shell">
-
-      <FloatingOrbs />
-
-      <Topbar
-        admin
-        onSwitch={onSwitch}
-      />
-
-
-      <main className="adminPortal">
-
-
-        {/* ADMIN HERO */}
-
-        <div className="adminHero">
+        <header className="top-header">
 
           <div>
+            <div className="header-brand">
+              SMART COMPLAINT
+            </div>
 
-            <span className="eyebrow">
-              OPERATIONS • LIVE
-            </span>
+            <div className="header-small">
+              FILE NEW COMPLAINT
+            </div>
+          </div>
+
+          <button
+            className="logout-button"
+            onClick={() => setPage('user')}
+          >
+            ← MY DASHBOARD
+          </button>
+
+        </header>
+
+        <main className="form-page">
+
+          <div className="form-heading">
+            <div className="eyebrow">
+              CITIZEN REPORT
+            </div>
 
             <h1>
-
-              Complaint
-              <br />
-
-              <em>
-                control room.
-              </em>
-
+              File a complaint
             </h1>
 
             <p>
-              Review evidence, locate incidents,
-              assign staff and move every case
-              toward resolution.
+              Provide accurate details and,
+              if possible, attach photographic
+              proof and your location.
             </p>
-
           </div>
 
+          {message && (
+            <div className="message success-message">
+              {message}
+            </div>
+          )}
 
-          <div className="pulseCard glassCard">
+          <form
+            onSubmit={submit}
+            className="complaint-form"
+          >
 
-            <span className="liveDot" />
+            <div className="form-section">
 
-            SYSTEM ONLINE
+              <div className="section-number">
+                01
+              </div>
 
-            <div className="pulseLine" />
+              <div className="form-section-content">
 
-          </div>
+                <h2>
+                  Complaint Details
+                </h2>
 
-        </div>
+                <div className="form-grid">
 
+                  <div className="field">
 
-        {/* STATS */}
+                    <label>
+                      COMPLAINT TYPE *
+                    </label>
 
-        <div className="statsGrid">
+                    <select name="type">
+                      <option value="">
+                        Select complaint type
+                      </option>
 
-          <div className="stat glassCard">
+                      <option value="Garbage">
+                        Garbage
+                      </option>
 
-            <span>
-              TOTAL CASES
-            </span>
+                      <option value="Road Damage">
+                        Road Damage
+                      </option>
 
-            <b>
-              {counts.total}
-            </b>
+                      <option value="Street Light">
+                        Street Light
+                      </option>
 
-            <small>
-              All complaints
-            </small>
+                      <option value="Water Supply">
+                        Water Supply
+                      </option>
 
-          </div>
+                      <option value="Drainage">
+                        Drainage
+                      </option>
 
+                      <option value="Public Safety">
+                        Public Safety
+                      </option>
 
-          <div className="stat glassCard">
+                      <option value="Other">
+                        Other
+                      </option>
 
-            <span>
-              PENDING
-            </span>
+                    </select>
 
-            <b>
-              {counts.pending}
-            </b>
+                  </div>
 
-            <small>
-              Awaiting action
-            </small>
+                  <div className="field">
 
-          </div>
+                    <label>
+                      CONTACT INFORMATION
+                    </label>
 
+                    <input
+                      name="contact"
+                      type="text"
+                      placeholder="Phone number or email"
+                    />
 
-          <div className="stat glassCard">
+                  </div>
 
-            <span>
-              IN PROGRESS
-            </span>
+                </div>
 
-            <b>
-              {counts.progress}
-            </b>
+                <div className="field">
 
-            <small>
-              Assigned cases
-            </small>
+                  <label>
+                    DESCRIPTION *
+                  </label>
 
-          </div>
+                  <textarea
+                    name="description"
+                    rows="6"
+                    placeholder="Describe the problem clearly..."
+                  />
 
+                </div>
 
-          <div className="stat glassCard">
+              </div>
+            </div>
 
-            <span>
-              RESOLVED
-            </span>
+            <div className="form-section">
 
-            <b>
-              {counts.resolved}
-            </b>
+              <div className="section-number">
+                02
+              </div>
 
-            <small>
-              Closed successfully
-            </small>
+              <div className="form-section-content">
 
-          </div>
+                <h2>
+                  Proof / Evidence
+                </h2>
 
-        </div>
+                <p className="section-help">
+                  Upload a photograph showing
+                  the problem. Maximum size: 10 MB.
+                </p>
 
+                <div className="upload-area">
 
-        {/* CASE DATABASE */}
+                  <input
+                    id="proof"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProofChange}
+                  />
 
-        <section
-          className="glassCard adminTableCard"
-        >
+                  <label htmlFor="proof">
+                    📷
+                    <strong>
+                      CLICK TO UPLOAD PROOF
+                    </strong>
+                    <span>
+                      JPG, PNG, WEBP — Maximum 10 MB
+                    </span>
+                  </label>
 
-          <div className="tableToolbar">
+                </div>
 
-            <div>
+                {proofPreview && (
+                  <div className="proof-preview">
 
-              <span className="miniLabel">
-                CASE DATABASE
-              </span>
+                    <img
+                      src={proofPreview}
+                      alt="Complaint proof preview"
+                    />
 
-              <h2>
-                All complaints
-              </h2>
+                    <div>
+                      <strong>
+                        {proof?.name}
+                      </strong>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProof(null);
+                          setProofPreview('');
+                        }}
+                      >
+                        REMOVE
+                      </button>
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+            <div className="form-section">
+
+              <div className="section-number">
+                03
+              </div>
+
+              <div className="form-section-content">
+
+                <h2>
+                  Complaint Location
+                </h2>
+
+                <p className="section-help">
+                  Mark the exact location of the
+                  complaint on the map.
+                </p>
+
+                <LocationMap
+                  value={location}
+                  onChange={setLocation}
+                />
+
+              </div>
+            </div>
+
+            <div className="submit-area">
+
+              <button
+                className="submit-complaint-button"
+                type="submit"
+                disabled={loading}
+              >
+                {loading
+                  ? 'SUBMITTING...'
+                  : 'SUBMIT COMPLAINT →'}
+              </button>
+
+              <button
+                type="button"
+                className="cancel-button"
+                onClick={() => {
+                  setPage('user');
+                  setMessage('');
+                }}
+              >
+                CANCEL
+              </button>
 
             </div>
 
+          </form>
 
-            <div className="tools">
+        </main>
+
+      </div>
+    );
+  }
+
+  if (
+    page === 'admin' &&
+    adminLoggedIn
+  ) {
+    return (
+      <div className="admin-shell">
+
+        <header className="admin-header">
+
+          <div>
+            <div className="admin-brand">
+              SMART COMPLAINT
+            </div>
+
+            <div className="admin-subtitle">
+              ADMIN CONTROL CENTER
+            </div>
+          </div>
+
+          <button
+            className="admin-logout"
+            onClick={handleLogout}
+          >
+            LOGOUT
+          </button>
+
+        </header>
+
+        <main className="admin-content">
+
+          <section className="admin-welcome">
+
+            <div>
+              <div className="eyebrow">
+                ADMINISTRATOR
+              </div>
+
+              <h1>
+                Complaint Control Center
+              </h1>
+
+              <p>
+                Verify, assign, update and resolve
+                citizen complaints.
+              </p>
+            </div>
+
+            <button
+              className="refresh-button"
+              onClick={loadAllComplaints}
+            >
+              ↻ REFRESH DATA
+            </button>
+
+          </section>
+
+          {message && (
+            <div className="message success-message">
+              {message}
+            </div>
+          )}
+
+          <section className="admin-stats">
+
+            <div className="stat-card">
+              <span>TOTAL CASES</span>
+              <strong>
+                {totalComplaints}
+              </strong>
+            </div>
+
+            <div className="stat-card">
+              <span>PENDING</span>
+              <strong>
+                {pendingComplaints}
+              </strong>
+            </div>
+
+            <div className="stat-card">
+              <span>IN PROGRESS</span>
+              <strong>
+                {progressComplaints}
+              </strong>
+            </div>
+
+            <div className="stat-card">
+              <span>RESOLVED</span>
+              <strong>
+                {resolvedComplaints}
+              </strong>
+            </div>
+
+          </section>
+
+          <section className="admin-panel">
+
+            <div className="admin-toolbar">
 
               <input
-                value={search}
+                type="search"
+                placeholder="Search complaint ID, type, description..."
+                value={adminSearch}
                 onChange={(event) =>
-                  setSearch(
+                  setAdminSearch(
                     event.target.value
                   )
                 }
-                placeholder="Search cases..."
               />
 
-
               <select
-                value={filter}
+                value={adminFilter}
                 onChange={(event) =>
-                  setFilter(
+                  setAdminFilter(
                     event.target.value
                   )
                 }
               >
-
-                <option>
-                  ALL
+                <option value="ALL">
+                  ALL STATUS
                 </option>
 
-                <option>
+                <option value="PENDING">
                   PENDING
                 </option>
 
-                <option>
-                  IN_PROGRESS
+                <option value="IN_PROGRESS">
+                  IN PROGRESS
                 </option>
 
-                <option>
+                <option value="RESOLVED">
                   RESOLVED
                 </option>
 
-                <option>
+                <option value="REJECTED">
                   REJECTED
                 </option>
 
@@ -1793,444 +1557,262 @@ function AdminPortal({
 
             </div>
 
-          </div>
+            <div className="admin-table-wrapper">
 
+              <table className="admin-table">
 
-          {/* TABLE */}
+                <thead>
+                  <tr>
+                    <th>COMPLAINT ID</th>
+                    <th>TYPE</th>
+                    <th>DESCRIPTION</th>
+                    <th>LOCATION</th>
+                    <th>PROOF</th>
+                    <th>STATUS</th>
+                    <th>STAFF</th>
+                    <th>ACTION</th>
+                  </tr>
+                </thead>
 
-          <div className="tableWrap">
+                <tbody>
 
-            <table>
+                  {filteredAdminComplaints.length === 0 ? (
 
-              <thead>
-
-                <tr>
-
-                  <th>
-                    CASE
-                  </th>
-
-                  <th>
-                    ISSUE
-                  </th>
-
-                  <th>
-                    STATUS
-                  </th>
-
-                  <th>
-                    ASSIGNEE
-                  </th>
-
-                  <th>
-                    LOCATION
-                  </th>
-
-                  <th>
-                    PROOF
-                  </th>
-
-                </tr>
-
-              </thead>
-
-
-              <tbody>
-
-                {visible.map(
-                  (complaint) => (
-
-                    <tr
-                      key={
-                        complaint.complaintId
-                      }
-                    >
-
-                      {/* CASE */}
-
-                      <td>
-
-                        <b>
-                          {complaint.complaintId}
-                        </b>
-
-                        <small>
-                          {formatDate(
-                            complaint.createdAt
-                          )}
-                        </small>
-
+                    <tr>
+                      <td
+                        colSpan="8"
+                        className="no-data"
+                      >
+                        No complaints found.
                       </td>
-
-
-                      {/* ISSUE */}
-
-                      <td>
-
-                        <b>
-                          {complaint.type}
-                        </b>
-
-                        <p>
-                          {complaint.description}
-                        </p>
-
-                        <small>
-                          {complaint.contact}
-                        </small>
-
-                      </td>
-
-
-                      {/* STATUS */}
-
-                      <td>
-
-                        <select
-                          className={
-                            `statusSelect ${complaint.status}`
-                          }
-                          value={
-                            complaint.status
-                          }
-                          onChange={
-                            (event) =>
-                              update(
-                                complaint.complaintId,
-                                {
-                                  status:
-                                    event.target.value
-                                }
-                              )
-                          }
-                        >
-
-                          <option>
-                            PENDING
-                          </option>
-
-                          <option>
-                            IN_PROGRESS
-                          </option>
-
-                          <option>
-                            RESOLVED
-                          </option>
-
-                          <option>
-                            REJECTED
-                          </option>
-
-                        </select>
-
-                      </td>
-
-
-                      {/* STAFF */}
-
-                      <td>
-
-                        <input
-                          className="staffInput"
-                          defaultValue={
-                            complaint.assignedStaff ||
-                            ''
-                          }
-                          placeholder="Assign staff"
-                          onBlur={
-                            (event) => {
-
-                              const value =
-                                event.target.value
-
-                              if (
-                                value !==
-                                (
-                                  complaint.assignedStaff ||
-                                  ''
-                                )
-                              ) {
-
-                                update(
-                                  complaint.complaintId,
-                                  {
-                                    assignedStaff:
-                                      value
-                                  }
-                                )
-
-                              }
-                            }
-                          }
-                        />
-
-                      </td>
-
-
-                      {/* LOCATION */}
-
-                      <td>
-
-                        {complaint.latitude != null &&
-                        complaint.longitude != null ? (
-
-                          <>
-
-                            <MiniMap
-                              lat={
-                                Number(
-                                  complaint.latitude
-                                )
-                              }
-                              lng={
-                                Number(
-                                  complaint.longitude
-                                )
-                              }
-                              id={
-                                complaint.complaintId
-                              }
-                            />
-
-                            <small className="address">
-
-                              {complaint.address ||
-                                `${Number(
-                                  complaint.latitude
-                                ).toFixed(5)}, ${Number(
-                                  complaint.longitude
-                                ).toFixed(5)}`}
-
-                            </small>
-
-                          </>
-
-                        ) : (
-
-                          <span className="muted">
-                            No pin
-                          </span>
-
-                        )}
-
-                      </td>
-
-
-                      {/* PROOF */}
-
-                      <td>
-
-                        {complaint.proofFileName ? (
-
-                          <button
-                            type="button"
-                            className="proofBtn"
-                            onClick={() =>
-                              setSelected(
-                                complaint
-                              )
-                            }
-                          >
-                            VIEW PROOF ↗
-                          </button>
-
-                        ) : (
-
-                          <span className="muted">
-                            No proof
-                          </span>
-
-                        )}
-
-                      </td>
-
                     </tr>
 
-                  )
-                )}
+                  ) : (
 
-              </tbody>
+                    filteredAdminComplaints.map(
+                      (complaint) => (
+                        <AdminComplaintRow
+                          key={
+                            complaint.complaintId
+                          }
+                          complaint={
+                            complaint
+                          }
+                          updateComplaint={
+                            updateComplaint
+                          }
+                        />
+                      )
+                    )
 
-            </table>
+                  )}
 
+                </tbody>
 
-            {!visible.length && (
+              </table>
 
-              <div className="empty">
-                No complaints match your filters.
-              </div>
+            </div>
 
-            )}
+          </section>
 
+        </main>
+
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function AdminComplaintRow({
+  complaint,
+  updateComplaint,
+}) {
+  const [status, setStatus] =
+    useState(
+      complaint.status || 'PENDING'
+    );
+
+  const [staff, setStaff] =
+    useState(
+      complaint.assignedStaff || ''
+    );
+
+  const [showProof, setShowProof] =
+    useState(false);
+
+  const saveChanges = () => {
+    updateComplaint(
+      complaint.complaintId,
+      status,
+      staff
+    );
+  };
+
+  return (
+    <>
+      <tr>
+
+        <td>
+          <strong className="table-id">
+            {complaint.complaintId}
+          </strong>
+        </td>
+
+        <td>
+          <span className="type-tag">
+            {complaint.type}
+          </span>
+        </td>
+
+        <td>
+          <div className="table-description">
+            {complaint.description}
           </div>
+        </td>
 
-        </section>
+        <td>
+          {complaint.latitude != null &&
+          complaint.longitude != null ? (
+            <div className="mini-location">
+              <span>📍 Location available</span>
 
-      </main>
+              {complaint.address && (
+                <small>
+                  {complaint.address}
+                </small>
+              )}
+            </div>
+          ) : (
+            <span className="muted">
+              Not provided
+            </span>
+          )}
+        </td>
 
+        <td>
 
-      {/* PROOF MODAL */}
+          {complaint.proofFileName ? (
 
-      {selected && (
+            <button
+              className="proof-button"
+              onClick={() =>
+                setShowProof(true)
+              }
+            >
+              🖼 VIEW PROOF
+            </button>
 
-        <div
-          className="modalBack"
-          onClick={() =>
-            setSelected(null)
-          }
-        >
+          ) : (
+            <span className="muted">
+              No proof
+            </span>
+          )}
 
-          <div
-            className="proofModal glassCard"
-            onClick={(event) =>
-              event.stopPropagation()
+        </td>
+
+        <td>
+
+          <select
+            className="status-select"
+            value={status}
+            onChange={(event) =>
+              setStatus(
+                event.target.value
+              )
             }
           >
 
-            <button
-              type="button"
-              className="close"
-              onClick={() =>
-                setSelected(null)
-              }
-            >
-              ×
-            </button>
+            <option value="PENDING">
+              PENDING
+            </option>
 
+            <option value="IN_PROGRESS">
+              IN PROGRESS
+            </option>
 
-            <span className="miniLabel">
+            <option value="RESOLVED">
+              RESOLVED
+            </option>
 
-              EVIDENCE •{' '}
-              {selected.complaintId}
+            <option value="REJECTED">
+              REJECTED
+            </option>
 
-            </span>
+          </select>
 
+        </td>
 
-            <h2>
-              {selected.proofFileName}
-            </h2>
+        <td>
 
+          <input
+            className="staff-input"
+            value={staff}
+            onChange={(event) =>
+              setStaff(
+                event.target.value
+              )
+            }
+            placeholder="Assign staff"
+          />
 
-            <img
-              src={
-                api.proofUrl(
-                  selected.complaintId
-                )
-              }
-              alt="Complaint proof"
-            />
+        </td>
 
+        <td>
 
-            <p>
-              {selected.description}
-            </p>
+          <button
+            className="save-button"
+            onClick={saveChanges}
+          >
+            SAVE
+          </button>
 
+        </td>
 
-            {selected.address && (
+      </tr>
 
-              <p>
-                📍 {selected.address}
-              </p>
+      {showProof && (
+        <tr>
+          <td
+            colSpan="8"
+            className="proof-expanded"
+          >
 
-            )}
+            <div className="proof-viewer">
 
+              <div className="proof-viewer-header">
 
-            {selected.latitude != null &&
-              selected.longitude != null && (
+                <strong>
+                  Complaint Proof —
+                  {' '}
+                  {complaint.complaintId}
+                </strong>
 
-              <p>
-                Coordinates:{' '}
-                {Number(
-                  selected.latitude
-                ).toFixed(6)}
-                {' , '}
-                {Number(
-                  selected.longitude
-                ).toFixed(6)}
-              </p>
+                <button
+                  onClick={() =>
+                    setShowProof(false)
+                  }
+                >
+                  CLOSE ×
+                </button>
 
-            )}
+              </div>
 
-          </div>
+              <img
+                src={api.proofUrl(
+                  complaint.complaintId
+                )}
+                alt="Complaint proof"
+              />
 
-        </div>
+            </div>
 
+          </td>
+        </tr>
       )}
 
-    </div>
-  )
+    </>
+  );
 }
 
-
-// ============================================================
-// MAIN APP
-// ============================================================
-
-export default function App() {
-
-  const [screen, setScreen] =
-    useState('login-user')
-
-
-  const goUser = () =>
-    setScreen('login-user')
-
-
-  const goAdmin = () =>
-    setScreen('login-admin')
-
-
-  // USER PORTAL
-
-  if (screen === 'user') {
-
-    return (
-      <UserPortal
-        onSwitch={goAdmin}
-      />
-    )
-  }
-
-
-  // ADMIN PORTAL
-
-  if (screen === 'admin') {
-
-    return (
-      <AdminPortal
-        onSwitch={goUser}
-      />
-    )
-  }
-
-
-  // LOGIN
-
-  const isAdmin =
-    screen === 'login-admin'
-
-
-  return (
-    <Login
-      mode={
-        isAdmin
-          ? 'admin'
-          : 'user'
-      }
-
-      onSwitch={
-        isAdmin
-          ? goUser
-          : goAdmin
-      }
-
-      onSuccess={() =>
-        setScreen(
-          isAdmin
-            ? 'admin'
-            : 'user'
-        )
-      }
-    />
-  )
-}
+export default App;
